@@ -68,6 +68,9 @@ namespace DitheringASCImage {
         /// </summary>
         public Setting OutputSetting {
             get {
+                if (_scaledPic is null) {
+                    throw new InvalidOperationException("实例还没有初始化完毕");
+                }
                 return this._setting with { outSize = new(_scaledPic.Width, _scaledPic.Height) };
             }
             // 初始化时，自动计算相应属性
