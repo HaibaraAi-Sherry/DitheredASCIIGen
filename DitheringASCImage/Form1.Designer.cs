@@ -52,6 +52,7 @@
             tB.ScrollBars = ScrollBars.Both;
             tB.Size = new Size(1159, 697);
             tB.TabIndex = 0;
+            tB.WordWrap = false;
             tB.DragDrop += textBox_DragDrop;
             tB.DragEnter += textBox_DragEnter;
             // 

@@ -131,6 +131,10 @@ namespace DitheringASCImage {
                 c2t.ChangeFont(fontDialog.Font);
                 tB.Text = c2t.Convert();
                 tB.Font = fontDialog.Font;
+
+                if (chkB_isLock.Checked) {
+                    tB_Height.Text = c2t.OutputSetting.outSize.Height.ToString();
+                }
             }
         }
 

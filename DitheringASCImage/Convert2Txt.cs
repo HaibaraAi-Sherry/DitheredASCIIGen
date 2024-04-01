@@ -55,14 +55,17 @@ namespace DitheringASCImage {
         /// </summary>
         private List<CharPoint>? _textPoints;
 
-        private char[] _nearestChars = new char[256];
+        /// <summary>
+        /// 灰度值对应的CharPoint结构体的索引值，自动计算
+        /// </summary>
+        private int[]? _nearestCharPoint;
 
         /// <summary>
         /// 用于绑定字符和灰度值的结构体，自动计算
         /// </summary>
-        private readonly record struct CharPoint(char c, int gray) {
+        private readonly record struct CharPoint(char c, byte gray) {
             readonly public char c = c;
-            readonly public int gray = gray;
+            readonly public byte gray = gray;
         }
 
         /// <summary>
@@ -137,6 +140,8 @@ namespace DitheringASCImage {
             UpdatePoints();
             UpdateNearestChar();
             if (res) {
+                UpdateScaledBitmap();
+                UpdateGrayMatrix();
             }
             UpdateDitheredMatrix();
         }
@@ -177,7 +182,7 @@ namespace DitheringASCImage {
             if (_textRatio == curRatio) {
                 return false;
             }
-            this._textRatio = size.Height / size.Width;
+            this._textRatio = size.Height / size.Width + 0.4;
             return true;
         }
 
@@ -206,16 +211,16 @@ namespace DitheringASCImage {
                     }
                 }
                 //bg.Save("H:\\a.png");
-                this._textPoints.Add(new CharPoint(item, whitePixel * 255 / (bg.Width * bg.Height)));
+                this._textPoints.Add(new CharPoint(item, (byte)(whitePixel * 255 / (bg.Width * bg.Height))));
             }
 
             // 线性变换，使得灰度值更加均匀
             // _textPoints[0] -> 0, _textPoints[^1] -> 255
             _textPoints.Sort((a, b) => a.gray.CompareTo(b.gray));
-            int min = _textPoints[0].gray;
-            int max = _textPoints[^1].gray;
+            byte min = _textPoints[0].gray;
+            byte max = _textPoints[^1].gray;
             for (int i = 0; i < _textPoints.Count; i++) {
-                _textPoints[i] = new CharPoint(_textPoints[i].c, (_textPoints[i].gray - min) * 255 / (max - min));
+                _textPoints[i] = new CharPoint(_textPoints[i].c, (byte)((_textPoints[i].gray - min) * 255 / (max - min)));
             }
         }
 
@@ -266,11 +271,11 @@ namespace DitheringASCImage {
         private void UpdateNearestChar() {
             ArgumentNullException.ThrowIfNull(_textPoints);
 
-            _nearestChars = new char[256];
+            _nearestCharPoint = new int[256];
             _textPoints!.Sort((a, b) => a.gray - b.gray);
             // 填充已经确定的灰度值
             for (int i = 0; i < _textPoints.Count; i++) {
-                _nearestChars[_textPoints[i].gray] = _textPoints[i].c;
+                _nearestCharPoint[_textPoints[i].gray] = i;
             }
 
             // 先填充除去开头和末尾的灰度值
@@ -279,8 +284,8 @@ namespace DitheringASCImage {
 
             while (true) {
                 int m = (_textPoints[idx1].gray + _textPoints[idx2].gray) >> 1;
-                Array.Fill(_nearestChars, _textPoints[idx1].c, _textPoints[idx1].gray, m - _textPoints[idx1].gray + 1);
-                Array.Fill(_nearestChars, _textPoints[idx2].c, m + 1, _textPoints[idx2].gray - (m + 1) + 1);
+                Array.Fill(_nearestCharPoint, idx1, _textPoints[idx1].gray, m - _textPoints[idx1].gray + 1);
+                Array.Fill(_nearestCharPoint, idx2, m + 1, _textPoints[idx2].gray - (m + 1) + 1);
 
                 idx1 += 1;
                 idx2 += 1;
@@ -290,8 +295,8 @@ namespace DitheringASCImage {
             }
 
             // 填充开头和末尾的灰度值
-            Array.Fill(_nearestChars, _textPoints[0].c, 0, _textPoints[0].gray);
-            Array.Fill(_nearestChars, _textPoints[^1].c, _textPoints[^1].gray, 256 - _textPoints[^1].gray);
+            Array.Fill(_nearestCharPoint, 0, 0, _textPoints[0].gray);
+            Array.Fill(_nearestCharPoint, _textPoints.Count - 1, _textPoints[^1].gray, 256 - _textPoints[^1].gray);
         }
 
         /// <summary>
@@ -313,7 +318,7 @@ namespace DitheringASCImage {
                     _ditheredMatrix[i, j] =
                         ColorClipping(_matrix[i, j] + _ditheredMatrix[i, j]);
 
-                    byte choice = (byte)_textPoints!.Find((a) => a.c == _nearestChars[_ditheredMatrix[i, j]]).gray;
+                    byte choice = _textPoints[_nearestCharPoint[_ditheredMatrix[i, j]]].gray;
                     int error = _ditheredMatrix[i, j] - choice;
 
                     _ditheredMatrix[i, j] = choice;
@@ -334,12 +339,13 @@ namespace DitheringASCImage {
         #endregion
 
         private static byte ColorClipping(int color) {
+            if ((color & 255) == color) {
+                return (byte)color;
+            }
             if (color < 0) {
                 return 0;
-            } else if (color > 255) {
-                return 255;
             }
-            return (byte)color;
+            return 255;
         }
         public Convert2Txt(Bitmap pic, Setting setting) {
             this.CurrentPicture = pic;
@@ -362,17 +368,19 @@ namespace DitheringASCImage {
         }
 
         private string GenerateTxt() {
+            ArgumentNullException.ThrowIfNull(_nearestCharPoint);
+            ArgumentNullException.ThrowIfNull(_textPoints);
             if (_scaledPic is null) {
                 return string.Empty;
             }
             // 根据需要采用不同的矩阵
-            byte[,] desiredMatrix = 
+            byte[,] desiredMatrix =
                 _setting.dither ? _ditheredMatrix! : _matrix!;
 
             StringBuilder sb = new();
             for (int i = 0; i < desiredMatrix!.GetLength(0); i++) {
-                for (int j = 0; j <desiredMatrix.GetLength(1); j++) {
-                    sb.Append(_nearestChars[desiredMatrix[i, j]]);
+                for (int j = 0; j < desiredMatrix.GetLength(1); j++) {
+                    sb.Append((_textPoints[_nearestCharPoint[desiredMatrix[i, j]]].c));
                 }
                 sb.AppendLine();
             }
