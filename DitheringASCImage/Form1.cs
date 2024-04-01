@@ -92,6 +92,10 @@ namespace DitheringASCImage {
             if (c2t is null) {
                 return;
             }
+            if (chkB_isLock.Checked) {
+                // 说明是宽度改变导致的高度改变，不需要改变图片
+                return;
+            }
             Size size = new();
             if (int.TryParse(tB_Height.Text, out int height)
                 && int.TryParse(tB_Width.Text, out int width)) {
@@ -101,6 +105,26 @@ namespace DitheringASCImage {
                 }
             }
             tB.Text = c2t.Convert();
+        }
+
+        private void cbB_char_TextChanged(object sender, EventArgs e) {
+            if (c2t is null || cbB_char.Text.Length < 2) {
+                return;
+            }
+
+            c2t.ChangeCharacter(cbB_char.Text);
+            tB.Text = c2t.Convert();
+        }
+
+        private void btn_changeFont_Click(object sender, EventArgs e) {
+            if (c2t is null) {
+                return;
+            }
+            if (fontDialog.ShowDialog() == DialogResult.OK) {
+                c2t.ChangeFont(fontDialog.Font);
+                tB.Text = c2t.Convert();
+                tB.Font = fontDialog.Font;
+            }
         }
     }
 }

@@ -2,6 +2,8 @@
 using System.CodeDom;
 using System.Collections.Generic;
 using System.Data.Common;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -13,7 +15,7 @@ namespace DitheringASCImage {
         /// 设置输出的尺寸，宽度为字符数，高度为行数，高度为-1时表示自动计算
         /// </summary>
         public Size outSize = outSize;
-        public Font font = new("Lucida Console", 10);
+        public Font font = new("Lucida Console", 8);
     }
 
 
@@ -75,12 +77,6 @@ namespace DitheringASCImage {
             }
             // 初始化时，自动计算相应属性
             init {
-                if (value.characters.Length < 2) {
-                    throw new ArgumentException("字符集长度至少为2");
-                }
-                if (value.font is null) {
-                    throw new ArgumentNullException(nameof(value.font));
-                }
                 this._setting = value;
                 // 计算字符的宽高比和文本尺寸
                 UpdateRatio();
@@ -105,6 +101,7 @@ namespace DitheringASCImage {
 
         public void ChangeCharacter(string characters) {
             this._setting.characters = characters;
+            UpdateRatio();
             UpdatePoints();
             UpdateNearestChar();
             UpdateDitheredMatrix();
@@ -115,7 +112,7 @@ namespace DitheringASCImage {
             if (size.Width == 0) {
                 return;
             }
-            if(UpdateHeight().Height == 0) {
+            if (UpdateHeight().Height == 0) {
                 return;
             }
             UpdateScaledBitmap();
@@ -123,7 +120,19 @@ namespace DitheringASCImage {
             UpdateDitheredMatrix();
         }
 
+        public void ChangeFont(Font font) {
+            this._setting.font = font;
+            UpdateRatio();
+            UpdatePoints();
+            UpdateNearestChar();
+            UpdateDitheredMatrix();
+        }
+
         #endregion
+
+        private static byte ToGray(Color color) {
+            return (byte)((color.R * 299 + color.G * 587 + color.B * 114 + 500) / 1000);
+        }
 
         #region UpdateMethods
         /// <summary>
@@ -136,13 +145,16 @@ namespace DitheringASCImage {
         }
 
         /// <summary>
-        /// 在更换字体后，自动更新字符尺寸和字符的高宽比
+        /// 在更换字体，或者更换字符集后，自动更新字符尺寸和字符的高宽比
         /// </summary>
         private void UpdateRatio() {
-            using Graphics gr = Graphics.FromImage(new Bitmap(1, 1));
-            this._textSize = gr.MeasureString(_setting.characters[0].ToString(), _setting.font).ToSize();
-
-            this._textRatio = (_textSize.Height + 8) * 1.0 / _textSize.Width;
+            ArgumentNullException.ThrowIfNull(_setting.font);
+            using Bitmap bitmap = new(100, 100);
+            using Graphics gr = Graphics.FromImage(bitmap);
+            // 不能用任意字符，用Q更合适
+            var size = gr.MeasureString("Q", _setting.font);
+            this._textSize = new((int)(size.Width + 0.5), (int)(size.Height + 0.5));
+            this._textRatio = size.Height / size.Width;
         }
 
 
@@ -150,22 +162,26 @@ namespace DitheringASCImage {
         /// 在字符集改变时，自动更新字符对应的灰度值
         /// </summary>
         private void UpdatePoints() {
-            this._textPoints = new();
+            if (string.IsNullOrEmpty(_setting.characters)
+                || this._setting.characters.Length < 2) {
+                throw new ArgumentException("字符集长度不能小于2");
+            }
+            this._textPoints = [];
             Font font = this._setting.font;
-            using Bitmap bg = new(_textSize.Width + 2, _textSize.Height + 2);
+            using Bitmap bg = new(_textSize.Width, _textSize.Height);
             using Graphics g = Graphics.FromImage(bg);
             foreach (var item in this._setting.characters) {
                 g.Clear(Color.White);
                 g.DrawString(item.ToString(), font, Brushes.Black, 0, 0);
-                int blackPixel = 0;
+                int whitePixel = 0;
                 for (int i = 0; i < bg.Width; i++) {
                     for (int j = 0; j < bg.Height; j++) {
-                        if (bg.GetPixel(i, j).R < 80) {
-                            blackPixel++;
+                        if (ToGray(bg.GetPixel(i, j)) == 255) {
+                            whitePixel++;
                         }
                     }
                 }
-                this._textPoints.Add(new CharPoint(item, blackPixel * 255 / (bg.Width * bg.Height)));
+                this._textPoints.Add(new CharPoint(item, whitePixel * 255 / (bg.Width * bg.Height)));
             }
 
             // 线性变换，使得灰度值更加均匀
@@ -174,7 +190,7 @@ namespace DitheringASCImage {
             int min = _textPoints[0].gray;
             int max = _textPoints[^1].gray;
             for (int i = 0; i < _textPoints.Count; i++) {
-                _textPoints[i] = new CharPoint(_textPoints[i].c, 255 - (_textPoints[i].gray - min) * 255 / (max - min));
+                _textPoints[i] = new CharPoint(_textPoints[i].c, (_textPoints[i].gray - min) * 255 / (max - min));
             }
         }
 
@@ -187,7 +203,8 @@ namespace DitheringASCImage {
                 double h = CurrentPicture.Height * width * 1.0 / CurrentPicture.Width;
                 h /= this._textRatio;
 
-                return size with { Height = (int)h };
+                size.Height = (int)h;
+                return size;
             }
 
             return size;
@@ -198,27 +215,31 @@ namespace DitheringASCImage {
         /// </summary>
         /// <exception cref="InvalidOperationException">当没有缩放的图片时，引发异常</exception>
         private void UpdateGrayMatrix() {
-            if (_scaledPic is null) {
-                throw new InvalidOperationException();
-            }
+            ArgumentNullException.ThrowIfNull(_scaledPic);
+
             _matrix = new byte[_scaledPic.Height, _scaledPic.Width];
-            for (int i = 0; i < _scaledPic.Height; i++) {
-                for (int j = 0; j < _scaledPic.Width; j++) {
-                    var pixel = _scaledPic.GetPixel(j, i);
-                    var gray = (pixel.R * 299 + pixel.G * 587 + pixel.B * 114 + 500) / 1000;
-                    gray = ColorClipping(gray);
-                    _matrix[i, j] = (byte)gray;
+
+            BitmapData srcData = _scaledPic.LockBits(new(0, 0, _scaledPic.Width, _scaledPic.Height),
+                ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+            // 数据存放格式：BGRA，各占一个字节
+            unsafe {
+                byte* p = (byte*)srcData.Scan0;
+                for (int i = 0; i < srcData.Height; i++) {
+                    for (int j = 0; j < srcData.Width; j++) {
+                        _matrix[i, j] = ToGray(Color.FromArgb(p[2], p[1], p[0]));
+                        p += 4;
+                    }
                 }
             }
+            _scaledPic.UnlockBits(srcData);
+
         }
 
         /// <summary>
         /// 在字符集更改时，更新字符对应的灰度值
         /// </summary>
         private void UpdateNearestChar() {
-            if (_textPoints is null) {
-                UpdatePoints();
-            }
+            ArgumentNullException.ThrowIfNull(_textPoints);
 
             _nearestChars = new char[256];
             _textPoints!.Sort((a, b) => a.gray - b.gray);
@@ -261,11 +282,13 @@ namespace DitheringASCImage {
             for (int i = 0; i < _matrix.GetLength(0); i++) {
                 for (int j = 0; j < _matrix.GetLength(1); j++) {
                     // 近似的灰度值：_nearestChars[_matrix[i, j]]
-                    _ditheredMatrix[i, j] += _matrix[i, j];
-                    _ditheredMatrix[i, j] = ColorClipping(_ditheredMatrix[i, j]);
+                    _ditheredMatrix[i, j] =
+                        ColorClipping(_matrix[i, j] + _ditheredMatrix[i, j]);
 
-                    int error = _matrix[i, j] -
-                        _textPoints!.Find((a) => a.c == _nearestChars[_ditheredMatrix[i, j]]).gray;
+                    byte choice = (byte)_textPoints!.Find((a) => a.c == _nearestChars[_ditheredMatrix[i, j]]).gray;
+                    int error = _ditheredMatrix[i, j] - choice;
+
+                    _ditheredMatrix[i, j] = choice;
                     error >>= 2;
                     if (j + 1 < _matrix.GetLength(1)) {
                         _ditheredMatrix[i, j + 1] = ColorClipping(_ditheredMatrix[i, j + 1] + error);
