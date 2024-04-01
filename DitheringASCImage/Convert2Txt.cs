@@ -16,6 +16,7 @@ namespace DitheringASCImage {
         /// </summary>
         public Size outSize = outSize;
         public Font font = new("Lucida Console", 8);
+        public bool dither = true;
     }
 
 
@@ -30,7 +31,7 @@ namespace DitheringASCImage {
         private byte[,]? _matrix;
 
         /// <summary>
-        /// 按照字符集抖动处理后的灰度矩阵
+        /// 按照字符集抖动处理后的灰度矩阵，若不抖动则不采用该矩阵。
         /// </summary>
         private byte[,]? _ditheredMatrix;
 
@@ -99,11 +100,21 @@ namespace DitheringASCImage {
             UpdateDitheredMatrix();
         }
 
+        /// <summary>
+        /// 更新字符集，注意字符集的种类不能小于2，并且有可能改变字符宽高比
+        /// </summary>
+        /// <param name="characters">字符集</param>
         public void ChangeCharacter(string characters) {
+            if (characters.ToHashSet().Count <= 1) {
+                throw new ArgumentException("字符种类过少");
+            }
             this._setting.characters = characters;
-            UpdateRatio();
+            var res = UpdateRatio();
             UpdatePoints();
             UpdateNearestChar();
+            if (res) {
+                UpdateScaledBitmap();
+            }
             UpdateDitheredMatrix();
         }
 
@@ -122,17 +133,22 @@ namespace DitheringASCImage {
 
         public void ChangeFont(Font font) {
             this._setting.font = font;
-            UpdateRatio();
+            var res = UpdateRatio();
             UpdatePoints();
             UpdateNearestChar();
+            if (res) {
+            }
             UpdateDitheredMatrix();
         }
 
+        public void ChangeIsDither(bool isDither) {
+            this._setting.dither = isDither;
+            UpdateDitheredMatrix();
+        }
         #endregion
 
-        private static byte ToGray(Color color) {
-            return (byte)((color.R * 299 + color.G * 587 + color.B * 114 + 500) / 1000);
-        }
+        private static byte ToGray(Color color) =>
+            (byte)((color.R * 76 + color.G * 150 + color.B * 30) >> 8);
 
         #region UpdateMethods
         /// <summary>
@@ -147,14 +163,22 @@ namespace DitheringASCImage {
         /// <summary>
         /// 在更换字体，或者更换字符集后，自动更新字符尺寸和字符的高宽比
         /// </summary>
-        private void UpdateRatio() {
+        /// <returns>返回字符比例是否发生了变化</returns>
+        private bool UpdateRatio() {
             ArgumentNullException.ThrowIfNull(_setting.font);
             using Bitmap bitmap = new(100, 100);
             using Graphics gr = Graphics.FromImage(bitmap);
-            // 不能用任意字符，用Q更合适
-            var size = gr.MeasureString("Q", _setting.font);
+            // 不能用任意字符，要防空格
+            var size = gr.MeasureString((
+                _setting.characters[0] == ' ' ? _setting.characters[1] : _setting.characters[0]).ToString()
+                , _setting.font);
             this._textSize = new((int)(size.Width + 0.5), (int)(size.Height + 0.5));
+            var curRatio = size.Height / size.Width;
+            if (_textRatio == curRatio) {
+                return false;
+            }
             this._textRatio = size.Height / size.Width;
+            return true;
         }
 
 
@@ -181,6 +205,7 @@ namespace DitheringASCImage {
                         }
                     }
                 }
+                //bg.Save("H:\\a.png");
                 this._textPoints.Add(new CharPoint(item, whitePixel * 255 / (bg.Width * bg.Height)));
             }
 
@@ -278,6 +303,9 @@ namespace DitheringASCImage {
             if (_matrix is null) {
                 throw new InvalidOperationException();
             }
+            if (!_setting.dither) {
+                return;
+            }
             _ditheredMatrix = new byte[_matrix.GetLength(0), _matrix.GetLength(1)];
             for (int i = 0; i < _matrix.GetLength(0); i++) {
                 for (int j = 0; j < _matrix.GetLength(1); j++) {
@@ -337,11 +365,14 @@ namespace DitheringASCImage {
             if (_scaledPic is null) {
                 return string.Empty;
             }
+            // 根据需要采用不同的矩阵
+            byte[,] desiredMatrix = 
+                _setting.dither ? _ditheredMatrix! : _matrix!;
 
             StringBuilder sb = new();
-            for (int i = 0; i < _ditheredMatrix!.GetLength(0); i++) {
-                for (int j = 0; j < _ditheredMatrix.GetLength(1); j++) {
-                    sb.Append(_nearestChars[_ditheredMatrix[i, j]]);
+            for (int i = 0; i < desiredMatrix!.GetLength(0); i++) {
+                for (int j = 0; j <desiredMatrix.GetLength(1); j++) {
+                    sb.Append(_nearestChars[desiredMatrix[i, j]]);
                 }
                 sb.AppendLine();
             }

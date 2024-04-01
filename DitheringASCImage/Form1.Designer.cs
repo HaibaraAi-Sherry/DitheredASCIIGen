@@ -35,6 +35,7 @@
             label3 = new Label();
             btn_changeFont = new Button();
             fontDialog = new FontDialog();
+            chB_isDither = new CheckBox();
             pnl_size.SuspendLayout();
             pnl_char.SuspendLayout();
             SuspendLayout();
@@ -146,7 +147,7 @@
             // 
             // btn_changeFont
             // 
-            btn_changeFont.Location = new Point(755, 14);
+            btn_changeFont.Location = new Point(742, 14);
             btn_changeFont.Name = "btn_changeFont";
             btn_changeFont.Size = new Size(112, 34);
             btn_changeFont.TabIndex = 8;
@@ -154,11 +155,25 @@
             btn_changeFont.UseVisualStyleBackColor = true;
             btn_changeFont.Click += btn_changeFont_Click;
             // 
+            // chB_isDither
+            // 
+            chB_isDither.AutoSize = true;
+            chB_isDither.Checked = true;
+            chB_isDither.CheckState = CheckState.Checked;
+            chB_isDither.Location = new Point(860, 20);
+            chB_isDither.Name = "chB_isDither";
+            chB_isDither.Size = new Size(126, 28);
+            chB_isDither.TabIndex = 9;
+            chB_isDither.Text = "是否Dither";
+            chB_isDither.UseVisualStyleBackColor = true;
+            chB_isDither.CheckedChanged += chB_isDither_CheckedChanged;
+            // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(11F, 24F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(1183, 775);
+            Controls.Add(chB_isDither);
             Controls.Add(btn_changeFont);
             Controls.Add(pnl_char);
             Controls.Add(pnl_size);
@@ -190,5 +205,6 @@
         private ComboBox cbB_char;
         private Button btn_changeFont;
         private FontDialog fontDialog;
+        private CheckBox chB_isDither;
     }
 }

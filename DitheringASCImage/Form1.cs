@@ -54,7 +54,7 @@ namespace DitheringASCImage {
 
             if (chkB_isLock.Checked) {
                 tB_Height.Text = c2t?.OutputSetting.outSize.Height.ToString();
-                textBox_Width_TextChanged(null, new());
+                textBox_Width_TextChanged(tB_Width, new());
             }
         }
 
@@ -111,20 +111,36 @@ namespace DitheringASCImage {
             if (c2t is null || cbB_char.Text.Length < 2) {
                 return;
             }
+            if (cbB_char.Text.ToHashSet().Count < 2) {
+                return;
+            }
 
             c2t.ChangeCharacter(cbB_char.Text);
             tB.Text = c2t.Convert();
+            if (chkB_isLock.Checked) {
+                tB_Height.Text = c2t.OutputSetting.outSize.Height.ToString();
+            }
         }
 
         private void btn_changeFont_Click(object sender, EventArgs e) {
             if (c2t is null) {
                 return;
             }
+            fontDialog.Font = this.tB.Font;
             if (fontDialog.ShowDialog() == DialogResult.OK) {
                 c2t.ChangeFont(fontDialog.Font);
                 tB.Text = c2t.Convert();
                 tB.Font = fontDialog.Font;
             }
+        }
+
+        private void chB_isDither_CheckedChanged(object sender, EventArgs e) {
+            if (c2t is null) {
+                return;
+            }
+
+            c2t.ChangeIsDither(chB_isDither.Checked);
+            tB.Text = c2t.Convert();
         }
     }
 }
