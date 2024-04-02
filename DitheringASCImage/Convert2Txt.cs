@@ -1,12 +1,5 @@
-﻿using System;
-using System.CodeDom;
-using System.Collections.Generic;
-using System.Data.Common;
-using System.Drawing.Drawing2D;
-using System.Drawing.Imaging;
-using System.Linq;
+﻿using System.Drawing.Imaging;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace DitheringASCImage {
     public struct Setting(string characters, Size outSize) {
@@ -17,10 +10,13 @@ namespace DitheringASCImage {
         public Size outSize = outSize;
         public Font font = new("Lucida Console", 8);
         public bool dither = true;
+        public bool sharp = true;
     }
 
 
     public class Convert2Txt : IDisposable {
+        FileMonitor? _relatedFile;
+
         public Bitmap CurrentPicture { get; set; }
 
         private Setting _setting;
@@ -93,9 +89,14 @@ namespace DitheringASCImage {
             }
         }
 
+        public void ClosePic() {
+            this._relatedFile?.CreateNewFile();
+            Dispose();
+        }
 
         #region ChangeMethods
         public void ChangePicture(Bitmap pic) {
+            this._relatedFile?.CreateNewFile();
             this.CurrentPicture.Dispose();
             this.CurrentPicture = pic;
             UpdateScaledBitmap();
@@ -361,9 +362,33 @@ namespace DitheringASCImage {
         /// 在输出尺寸改变时，自动更新计算尺寸，高度为-1时自动计算
         /// </summary>
 
+        public void CreateFileMonitor(Func<bool> save, Func<bool> create) {
+            if (_relatedFile is not null) {
+                return;
+            }
+            _relatedFile = new(save, create);
+        }
+
+        public bool GetFileMonitorStatus() {
+            if (_relatedFile is null) {
+                throw new InvalidOperationException("未创建FileMonitor对象");
+            }
+            return _relatedFile.IsFileChanged;
+        }
+
+        /// <summary>
+        /// 保存当前的ASCII字符画，保存方法自定义
+        /// </summary>
+        public void SaveCurrentASCImage() {
+            if (_relatedFile is null) {
+                throw new InvalidOperationException("未创建FileMonitor对象");
+            }
+            _relatedFile.Save();
+        }
 
         public string Convert() {
             //_ditheredMatrix = _matrix;
+            _relatedFile?.Change();
             return GenerateTxt();
         }
 
@@ -387,7 +412,6 @@ namespace DitheringASCImage {
 
             return sb.ToString();
         }
-
 
         public void Dispose() {
             _scaledPic?.Dispose();
